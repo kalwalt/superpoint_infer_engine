@@ -13,6 +13,7 @@ import onnxruntime
 import torch
 
 from torch import nn
+from torch.export import Dim  # <- correct import
 
 import network
 from superpoint_frontend import reduce_l2
@@ -50,29 +51,39 @@ def main():
     map_location = lambda storage, loc: storage
     if torch.cuda.is_available():
         map_location = None
-    pt_model.load_state_dict(torch.load(weights_path, map_location=map_location))
+    pt_model.load_state_dict(torch.load(weights_path, map_location=map_location, weights_only=True))
     pt_model.eval()
+    pt_model.cpu()
 
     # Create input to the model for onnx trace.
-    x = torch.randn(batch_size, 1, h, w, requires_grad=True)
+    x = torch.randn(batch_size, 1, h, w, requires_grad=False)
     torch_out = pt_model(x)
-    onnx_filename = os.path.join(output_dir, "superpoint_{}x{}.onnx".format(h, w))
+    onnx_filename = os.path.join(output_dir, f"superpoint_{h}x{w}.onnx")
 
-    # Export the model
-    torch.onnx.export(pt_model,               # model being run
-                      x,                         # model input (or a tuple for multiple inputs)
-                      onnx_filename,   # where to save the model (can be a file or file-like object)
-                      export_params=True,        # store the trained parameter weights inside the model file
-                      opset_version=16,          # the ONNX version to export the model to
-                      do_constant_folding=True,  # whether to execute constant folding for optimization
-                      input_names = ['input'],   # the model's input names
-                      output_names = ['semi', 'desc'], # the model's output names
-                      )
+     # Legacy dynamic axes (stable with onnxruntime)
+    dynamic_axes = {
+        'input': {2: 'height', 3: 'width'},
+        'semi': {2: 'height_out', 3: 'width_out'},
+        'desc': {2: 'height_out', 3: 'width_out'}
+    }
 
-    # Check onnx converion.
+    # Export the model (new exporter: requires onnxscript)
+    torch.onnx.export(
+        pt_model,
+        x,
+        onnx_filename,
+        export_params=True,
+        opset_version=16,
+        do_constant_folding=True,
+        input_names=['input'],
+        output_names=['semi', 'desc'],
+        dynamic_axes=dynamic_axes,
+    )
+
+    # Check onnx conversion.
     onnx_model = onnx.load(onnx_filename)
     onnx.checker.check_model(onnx_model)
-    ort_session = onnxruntime.InferenceSession(onnx_filename)
+    ort_session = onnxruntime.InferenceSession(onnx_filename, providers=["CPUExecutionProvider"])
 
     # compute ONNX Runtime output prediction
     ort_inputs = {ort_session.get_inputs()[0].name: to_numpy(x)}
@@ -84,7 +95,7 @@ def main():
     print("Exported model has been tested with ONNXRuntime, and the result looks good!")
 
     # Generate config for movidius blob
-    json_filename = os.path.join(output_dir, "superpoint_{}x{}.json".format(h, w))
+    json_filename = os.path.join(output_dir, f"superpoint_{h}x{w}.json")
     with open(json_filename, 'w') as f:
         f.write(
             json.dumps(
