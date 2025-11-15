@@ -1,0 +1,28 @@
+[project]
+name = "superpoint-infer-engine"
+version = "0.1.0"
+description = "Inference tooling and export helpers for the SuperPoint network."
+authors = [
+    {name = "Walter Perdan",email = "github@kalwaltart.it"}
+]
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "onnx (>=1.19.1,<2.0.0)",
+    "onnxruntime (>=1.23.2,<2.0.0)",
+    "torch (==2.5.0)"
+]
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[[tool.poetry.source]]
+name = "pytorch"
+url = "https://download.pytorch.org/whl/cpu"
+priority = "supplemental"
+
+
+[tool.poetry.dependencies]
+torch = {version = "2.5.0", source = "pytorch"}
