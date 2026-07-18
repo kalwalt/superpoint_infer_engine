@@ -10,6 +10,7 @@ import os
 import numpy as np
 import onnx
 import onnxruntime
+from onnxruntime.quantization import quantize_dynamic, QuantType
 import torch
 
 from torch import nn
@@ -58,7 +59,7 @@ def main():
     # Create input to the model for onnx trace.
     x = torch.randn(batch_size, 1, h, w, requires_grad=False)
     torch_out = pt_model(x)
-    onnx_filename = os.path.join(output_dir, f"superpoint_{h}x{w}.onnx")
+    onnx_filename = os.path.join(output_dir, "superpoint.onnx")
 
      # Legacy dynamic axes (stable with onnxruntime)
     dynamic_axes = {
@@ -121,6 +122,16 @@ def main():
             ]
             },
             separators=(',', ': '), indent=2))
+
+    # Quantize the model
+    quantized_filename = os.path.join(output_dir, "superpoint_quantized.onnx")
+    print("Quantizing the model...")
+    quantize_dynamic(
+        model_input=onnx_filename,
+        model_output=quantized_filename,
+        weight_type=QuantType.QUInt8  # 8-bit unsigned integers
+    )
+    print(f"Quantized model saved to {quantized_filename}")
 
 if __name__ == '__main__':
     main()
